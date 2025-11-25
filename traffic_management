@@ -1,0 +1,331 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_LANES 5
+#define MAX_TIME 120
+#define MIN_TIME 10
+
+// Vehicle struct
+struct Vehicle {
+    char regNum[20];
+    int hours, minutes, seconds;
+    int priority;
+    struct Vehicle* next;
+};
+
+// Binary Tree node
+struct TreeNode {
+    char regNum[20];
+    struct TreeNode* left;
+    struct TreeNode* right;
+};
+
+// Globals
+struct Vehicle* lanes[MAX_LANES];
+int numLanes;
+struct TreeNode* vehicleTree = NULL;
+
+// Helper: Convert HH:MM:SS to seconds
+int timeInSeconds(int h, int m, int s) {
+    return h * 3600 + m * 60 + s;
+}
+
+// Add vehicle to a lane
+void addVehicleToLane(int lane, char regNum[], int h, int m, int s, int priority) {
+    struct Vehicle* newVehicle = (struct Vehicle*)malloc(sizeof(struct Vehicle));
+    strcpy(newVehicle->regNum, regNum);
+    newVehicle->hours = h;
+    newVehicle->minutes = m;
+    newVehicle->seconds = s;
+    newVehicle->priority = priority;
+    newVehicle->next = NULL;
+
+    if (lanes[lane] == NULL) {
+        lanes[lane] = newVehicle;
+    } else {
+        struct Vehicle* temp = lanes[lane];
+        while (temp->next)
+            temp = temp->next;
+        temp->next = newVehicle;
+    }
+}
+
+// Display all lanes
+void displayAllLanes() {
+    for (int i = 0; i < numLanes; i++) {
+        printf("\nLane %d:\n", i + 1);
+        struct Vehicle* temp = lanes[i];
+        if (!temp) {
+            printf("  No vehicles.\n");
+            continue;
+        }
+        while (temp) {
+            printf("  Reg: %s | Arrival: %02d:%02d:%02d | Priority: %d\n",
+                   temp->regNum, temp->hours, temp->minutes, temp->seconds, temp->priority);
+            temp = temp->next;
+        }
+    }
+}
+
+// Count vehicles
+int countVehicles(struct Vehicle* head) {
+    int count = 0;
+    while (head) {
+        count++;
+        head = head->next;
+    }
+    return count;
+}
+
+// Convert list to array
+void listToArray(struct Vehicle* head, struct Vehicle* arr[]) {
+    int i = 0;
+    while (head) {
+        arr[i++] = head;
+        head = head->next;
+    }
+}
+
+// Merge sort (priority)
+void merge(struct Vehicle* arr[], int l, int m, int r) {
+    int n1 = m - l + 1, n2 = r - m;
+    struct Vehicle* L[n1], *R[n2];
+    for (int i = 0; i < n1; i++) L[i] = arr[l + i];
+    for (int i = 0; i < n2; i++) R[i] = arr[m + 1 + i];
+    int i = 0, j = 0, k = l;
+    while (i < n1 && j < n2)
+        arr[k++] = (L[i]->priority <= R[j]->priority) ? L[i++] : R[j++];
+    while (i < n1) arr[k++] = L[i++];
+    while (j < n2) arr[k++] = R[j++];
+}
+
+void mergeSort(struct Vehicle* arr[], int l, int r) {
+    if (l < r) {
+        int m = (l + r) / 2;
+        mergeSort(arr, l, m);
+        mergeSort(arr, m + 1, r);
+        merge(arr, l, m, r);
+    }
+}
+
+// Bubble sort (by time)
+void bubbleSortByArrival(struct Vehicle* arr[], int n) {
+    for (int i = 0; i < n - 1; i++)
+        for (int j = 0; j < n - i - 1; j++) {
+            int t1 = timeInSeconds(arr[j]->hours, arr[j]->minutes, arr[j]->seconds);
+            int t2 = timeInSeconds(arr[j + 1]->hours, arr[j + 1]->minutes, arr[j + 1]->seconds);
+            if (t1 > t2) {
+                struct Vehicle* temp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+            }
+        }
+}
+
+// Convert array to list
+struct Vehicle* arrayToList(struct Vehicle* arr[], int n) {
+    if (n == 0) return NULL;
+    for (int i = 0; i < n - 1; i++) arr[i]->next = arr[i + 1];
+    arr[n - 1]->next = NULL;
+    return arr[0];
+}
+
+// Sort all lanes by priority
+void sortAllLanesByPriority() {
+    for (int i = 0; i < numLanes; i++) {
+        int count = countVehicles(lanes[i]);
+        if (count == 0) continue;
+        struct Vehicle* arr[count];
+        listToArray(lanes[i], arr);
+        mergeSort(arr, 0, count - 1);
+        lanes[i] = arrayToList(arr, count);
+    }
+    printf("Lanes sorted by priority.\n");
+}
+
+// Binary Tree insert and search
+struct TreeNode* insertTree(struct TreeNode* root, char regNum[]) {
+    if (!root) {
+        struct TreeNode* node = (struct TreeNode*)malloc(sizeof(struct TreeNode));
+        strcpy(node->regNum, regNum);
+        node->left = node->right = NULL;
+        return node;
+    }
+    if (strcmp(regNum, root->regNum) < 0)
+        root->left = insertTree(root->left, regNum);
+    else if (strcmp(regNum, root->regNum) > 0)
+        root->right = insertTree(root->right, regNum);
+    return root;
+}
+
+int searchTree(struct TreeNode* root, char regNum[]) {
+    if (!root) return 0;
+    int cmp = strcmp(regNum, root->regNum);
+    if (cmp == 0) return 1;
+    return cmp < 0 ? searchTree(root->left, regNum) : searchTree(root->right, regNum);
+}
+
+// Linear search in lanes
+int searchInLanes(char regNum[]) {
+    for (int i = 0; i < numLanes; i++) {
+        struct Vehicle* temp = lanes[i];
+        while (temp) {
+            if (strcmp(temp->regNum, regNum) == 0)
+                return 1;
+            temp = temp->next;
+        }
+    }
+    return 0;
+}
+
+// Open signal
+void openSignal() {
+    int laneIndex = -1, bestPriority = 4, bestTime = __INT_MAX__;
+    for (int i = 0; i < numLanes; i++) {
+        struct Vehicle* front = lanes[i];
+        if (front) {
+            int currentTime = timeInSeconds(front->hours, front->minutes, front->seconds);
+            if (front->priority < bestPriority || 
+                (front->priority == bestPriority && currentTime < bestTime)) {
+                bestPriority = front->priority;
+                bestTime = currentTime;
+                laneIndex = i;
+            }
+        }
+    }
+
+    if (laneIndex != -1) {
+        struct Vehicle* served = lanes[laneIndex];
+        lanes[laneIndex] = served->next;
+        printf("🚦 Vehicle %s from lane %d has passed the signal.\n", served->regNum, laneIndex + 1);
+        free(served);
+    } else {
+        printf("No vehicles to process.\n");
+    }
+}
+
+// Green light duration
+void calculateGreenLightTime(int vehicleCounts[], int roads) {
+    int total = 0, greenTime[roads];
+    for (int i = 0; i < roads; i++)
+        total += vehicleCounts[i];
+
+    if (total == 0) {
+        for (int i = 0; i < roads; i++) printf("0 ");
+        return;
+    }
+
+    int sum = 0;
+    for (int i = 0; i < roads; i++) {
+        greenTime[i] = (vehicleCounts[i] * MAX_TIME) / total;
+        if (vehicleCounts[i] != 0 && greenTime[i] < MIN_TIME)
+            greenTime[i] = MIN_TIME;
+        sum += greenTime[i];
+    }
+
+    while (sum > MAX_TIME) {
+        for (int i = 0; i < roads && sum > MAX_TIME; i++) {
+            if (greenTime[i] > MIN_TIME) {
+                greenTime[i]--;
+                sum--;
+            }
+        }
+    }
+
+    printf("Green light durations (seconds): ");
+    for (int i = 0; i < roads; i++) printf("%d ", greenTime[i]);
+    printf("\n");
+}
+
+// Main program
+int main() {
+    printf("Enter number of lanes (2–5): ");
+    scanf("%d", &numLanes);
+    if (numLanes < 2 || numLanes > 5) {
+        printf("Invalid number of lanes.\n");
+        return 1;
+    }
+
+    for (int i = 0; i < numLanes; i++)
+        lanes[i] = NULL;
+
+    int choice;
+    char regNum[20];
+    int lane, h, m, s, priority;
+
+    while (1) {
+        printf("\n--- Traffic Management System ---\n");
+        printf("1. Add Vehicle\n");
+        printf("2. Display Lanes\n");
+        printf("3. Sort by Priority (Merge Sort)\n");
+        printf("4. Sort by Arrival Time (Bubble Sort)\n");
+        printf("5. Search Vehicle (Linear in Lanes)\n");
+        printf("6. Search Vehicle (Binary Tree)\n");
+        printf("7. Open Signal\n");
+        printf("8. Calculate Green Light Duration\n");
+        printf("9. Exit\n");
+        printf("Choose option: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                printf("Enter lane (1–%d): ", numLanes);
+                scanf("%d", &lane);
+                if (lane < 1 || lane > numLanes) {
+                    printf("Invalid lane.\n");
+                    break;
+                }
+                printf("Enter RegNo HH MM SS Priority (1-Ambulance, 2-VIP, 3-Normal): ");
+                scanf("%s %d %d %d %d", regNum, &h, &m, &s, &priority);
+                addVehicleToLane(lane - 1, regNum, h, m, s, priority);
+                vehicleTree = insertTree(vehicleTree, regNum);
+                break;
+
+            case 2: displayAllLanes(); break;
+            case 3: sortAllLanesByPriority(); break;
+            case 4:
+                for (int i = 0; i < numLanes; i++) {
+                    int count = countVehicles(lanes[i]);
+                    if (count == 0) continue;
+                    struct Vehicle* arr[count];
+                    listToArray(lanes[i], arr);
+                    bubbleSortByArrival(arr, count);
+                    lanes[i] = arrayToList(arr, count);
+                }
+                printf("Lanes sorted by arrival time.\n");
+                break;
+
+            case 5:
+                printf("Enter Reg No to search: ");
+                scanf("%s", regNum);
+                printf(searchInLanes(regNum) ? "Found in lane list.\n" : "Not found.\n");
+                break;
+
+            case 6:
+                printf("Enter Reg No to search: ");
+                scanf("%s", regNum);
+                printf(searchTree(vehicleTree, regNum) ? "Found in tree.\n" : "Not found.\n");
+                break;
+
+            case 7: openSignal(); break;
+
+            case 8: {
+                int counts[numLanes];
+                for (int i = 0; i < numLanes; i++)
+                    counts[i] = countVehicles(lanes[i]);
+                calculateGreenLightTime(counts, numLanes);
+                break;
+            }
+
+            case 9:
+                printf("Exiting...\n");
+                return 0;
+
+            default:
+                printf("Invalid option.\n");
+        }
+    }
+
+    return 0;
+}
